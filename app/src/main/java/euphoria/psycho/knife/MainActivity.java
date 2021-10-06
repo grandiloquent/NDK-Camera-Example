@@ -14,6 +14,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -74,9 +75,9 @@ public class MainActivity extends Activity {
         cameraPreview();
         rootView.setOnClickListener(v -> {
             //mHandler.removeCallbacks(null);
+            if (mIsRunning) return;
             takePhoto();
             triggerScanImages();
-            //mHandler.postDelayed(mTakePhoto, 5000);
         });
     }
 
@@ -93,6 +94,21 @@ public class MainActivity extends Activity {
                         new String[]{"image/*"}, null);
             }
         }).start();
+    }
+
+    boolean mIsRunning = false;
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (mIsRunning) return true;
+            takePhoto();
+            mHandler.postDelayed(mTakePhoto, 5000);
+            mIsRunning = true;
+        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            finish();
+        }
+        return true;
     }
 
     private Runnable mTakePhoto = new Runnable() {
