@@ -7,6 +7,7 @@ import android.graphics.Bitmap;
 import android.os.Build.VERSION;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -41,9 +42,11 @@ public class MainActivity extends Activity {
 //            });
 //            bitmapReady = true;
 //        }
-        boolean bitmapReady = true;
-        return bitmapReady;
+        return true;
     }
+
+    private Handler mHandler = new Handler();
+
 
     private void initialize() {
         setContentView(R.layout.main);
@@ -62,8 +65,20 @@ public class MainActivity extends Activity {
         }
         openCamera(true, this);
         cameraPreview();
-        rootView.setOnClickListener(v -> takePhoto());
+        rootView.setOnClickListener(v -> {
+            mHandler.removeCallbacks(null);
+            takePhoto();
+            mHandler.postDelayed(mTakePhoto, 5000);
+        });
     }
+
+    private Runnable mTakePhoto = new Runnable() {
+        @Override
+        public void run() {
+            takePhoto();
+            mHandler.postDelayed(mTakePhoto, 5000);
+        }
+    };
 
     private void setSystemUiVisibility(View rootView) {
         rootView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
