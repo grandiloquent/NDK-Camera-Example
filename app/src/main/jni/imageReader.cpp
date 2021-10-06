@@ -13,7 +13,7 @@
 #include "imageReader.h"
 #include "utils.h"
 
-static const char *kDirName = "/storage/emulated/0/Android/data/euphoria.psycho.knife/files/Pictures/";
+static const char *kDirName = "/storage/emulated/0/Pictures/Images/";
 static const char *kFileName = "capture";
 
 void OnImageCallback(void *ctx, AImageReader *reader) {

@@ -2,12 +2,17 @@ package euphoria.psycho.knife;
 
 import android.Manifest.permission;
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Build.VERSION;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -20,8 +25,10 @@ import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends Activity {
@@ -59,17 +66,33 @@ public class MainActivity extends Activity {
         win.setAttributes(winParams);
         win.setBackgroundDrawable(null);
         getActionBar().hide();
-        File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Images");
         if (!dir.isDirectory()) {
             dir.mkdirs();
         }
         openCamera(true, this);
         cameraPreview();
         rootView.setOnClickListener(v -> {
-            mHandler.removeCallbacks(null);
+            //mHandler.removeCallbacks(null);
             takePhoto();
-            mHandler.postDelayed(mTakePhoto, 5000);
+            triggerScanImages();
+            //mHandler.postDelayed(mTakePhoto, 5000);
         });
+    }
+
+    private void triggerScanImages() {
+        Context context = this;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Images");
+                File[] files = dir.listFiles();
+                MediaScannerConnection.scanFile(context,
+                        Arrays.stream(files).map(i -> i.getAbsolutePath())
+                                .toArray(String[]::new),
+                        new String[]{"image/*"}, null);
+            }
+        }).start();
     }
 
     private Runnable mTakePhoto = new Runnable() {
