@@ -1,93 +1,156 @@
-
 #include <jni.h>
-#include <memory>
-#include "camera_manager.h"
-#include "image_reader.h"
+#include <camera/NdkCameraManager.h>
 #include <android/log.h>
+#include <string>
 #include <android/native_window_jni.h>
 #include <media/NdkImageReader.h>
+#include <thread>
+#include "CameraUtils.h"
 
-#define  LOG_TAG "native"
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+static ACameraManager *cameraManager = nullptr;
+static ACameraDevice *cameraDevice = nullptr;
+static ANativeWindow *textureWindow = nullptr;
+static ACaptureRequest *request = nullptr;
+static ACaptureSessionOutput *textureOutput = nullptr;
+static ACaptureSessionOutputContainer *outputs = nullptr;
+static ANativeWindow *imageWindow = nullptr;
+static ACameraOutputTarget *imageTarget = nullptr;
+static AImageReader *imageReader = nullptr;
+static ACaptureSessionOutput *imageOutput = nullptr;
+static ACameraOutputTarget *textureTarget = nullptr;
+static ACameraCaptureSession *textureSession = nullptr;
 
-jobject surface_;
-JNIEnv *env_;
-ANativeWindow *nativeWindow_;
-std::unique_ptr<NDKCamera> camera_;
-ImageFormat view_;
-std::unique_ptr<ImageReader> jpgReader_;
+static void onSessionActive(void *context, ACameraCaptureSession *session) {
+}
 
-extern "C" JNIEXPORT void JNICALL
-Java_euphoria_psycho_knife_MainActivity_startCamera(JNIEnv *env, jclass type,
-                                                    jobject surface, jint width, jint height) {
-    env_ = env;
-    surface_ = env_->NewGlobalRef(surface);
-    nativeWindow_ = ANativeWindow_fromSurface(env_, surface_);
+static void onSessionReady(void *context, ACameraCaptureSession *session) {
+}
 
-    camera_.reset(new NDKCamera(ACAMERA_LENS_FACING_BACK));
-    camera_->MatchCaptureSizeRequest(width, height, &view_);
+static void onSessionClosed(void *context, ACameraCaptureSession *session) {
+}
 
-//    ANativeWindow *showWindow_ = nullptr;
-//    showWindow_ = ANativeWindow_fromSurface(env, surface);
-//    ANativeWindow_setBuffersGeometry(showWindow_, view_.height, view_.width,
-//                                     WINDOW_FORMAT_RGBA_8888);
+static ACameraCaptureSession_stateCallbacks sessionStateCallbacks{
+        .context = nullptr,
+        .onClosed = onSessionClosed,
+        .onReady = onSessionReady,
+        .onActive = onSessionActive
+};
 
-    LOGE("==========> %dx%d %d", view_.width, view_.height, view_.width * 6);
+static void onDisconnected(void *context, ACameraDevice *device) {
+}
 
-    jpgReader_.reset(new ImageReader(view_.width * 4, view_.height * 4, AIMAGE_FORMAT_JPEG));
-    jpgReader_->SetPresentRotation(0);
-    jpgReader_->RegisterCallback(nullptr, [&](void *ctx, ImageReader *reader) -> void {
-        int32_t format;
+static void onError(void *context, ACameraDevice *device, int error) {
+}
 
+static ACameraDevice_stateCallbacks cameraDeviceCallbacks = {
+        .context = nullptr,
+        .onDisconnected = onDisconnected,
+        .onError = onError,
+};
 
-        AImage *image = reader->GetLatestImage();
+void onCaptureFailed(void *context, ACameraCaptureSession *session,
+                     ACaptureRequest *req, ACameraCaptureFailure *failure) {
+}
 
-        int32_t height = 0;
-        AImage_getHeight(image, &height);
+void onCaptureSequenceCompleted(void *context, ACameraCaptureSession *session,
+                                int sequenceId, int64_t frameNumber) {}
 
-        int planeCount;
-        media_status_t status = AImage_getNumberOfPlanes(image, &planeCount);
+void onCaptureSequenceAborted(void *context, ACameraCaptureSession *session,
+                              int sequenceId) {}
+
+void onCaptureCompleted(
+        void *context, ACameraCaptureSession *session,
+        ACaptureRequest *req, const ACameraMetadata *result) {
+}
+
+static ACameraCaptureSession_captureCallbacks captureCallbacks{
+        .context = nullptr,
+        .onCaptureStarted = nullptr,
+        .onCaptureProgressed = nullptr,
+        .onCaptureCompleted = onCaptureCompleted,
+        .onCaptureFailed = onCaptureFailed,
+        .onCaptureSequenceCompleted = onCaptureSequenceCompleted,
+        .onCaptureSequenceAborted = onCaptureSequenceAborted,
+        .onCaptureBufferLost = nullptr,
+};
+
+static void imageCallback(void *context, AImageReader *reader) {
+    AImage *image = nullptr;
+    auto status = AImageReader_acquireNextImage(reader, &image);
+    std::thread processor([=]() {
+
         uint8_t *data = nullptr;
         int len = 0;
         AImage_getPlaneData(image, 0, &data, &len);
 
-        struct timespec ts{
-                0, 0
-        };
-        clock_gettime(CLOCK_REALTIME, &ts);
-        struct tm localTime;
-        localtime_r(&ts.tv_sec, &localTime);
-
-        std::string fileName = "/storage/emulated/0/Android/data/euphoria.psycho.knife/files/Pictures/";
-        fileName += "capture" + std::to_string(localTime.tm_mon) +
-                    std::to_string(localTime.tm_mday) + "-" +
-                    std::to_string(localTime.tm_hour) +
-                    std::to_string(localTime.tm_min) +
-                    std::to_string(localTime.tm_sec) + ".jpg";
-        FILE *file = fopen(fileName.c_str(), "wb");
-        if (file && data && len) {
-            fwrite(data, 1, len, file);
-            fclose(file);
-        } else {
-            if (file)
-                fclose(file);
-        }
         AImage_delete(image);
     });
-    //jpgReader_->WriteFile(jpgReader_->GetLatestImage());
-    camera_->CreateSession(nativeWindow_, jpgReader_->GetNativeWindow(), false, 0);
-    camera_->StartPreview(true);
+    processor.detach();
+}
+
+ANativeWindow *createSurface(AImageReader *reader) {
+    ANativeWindow *nativeWindow;
+    AImageReader_getWindow(reader, &nativeWindow);
+
+    return nativeWindow;
+}
+
+AImageReader *createJpegReader() {
+    AImageReader *reader = nullptr;
+    media_status_t status = AImageReader_new(640, 480, AIMAGE_FORMAT_JPEG,
+                                             4, &reader);
+    AImageReader_ImageListener listener{
+            .context = nullptr,
+            .onImageAvailable = imageCallback,
+    };
+    AImageReader_setImageListener(reader, &listener);
+    return reader;
+}
+
+void InitializeCamera(JNIEnv *env, jobject surface) {
+
+    cameraManager = ACameraManager_create();
+    auto id = GetBackFacingCameraId(cameraManager);
+    ACameraManager_openCamera(cameraManager, id.c_str(), &cameraDeviceCallbacks, &cameraDevice);
+
+    textureWindow = ANativeWindow_fromSurface(env, surface);
+    ACameraDevice_createCaptureRequest(cameraDevice, TEMPLATE_PREVIEW, &request);
+
+    ACaptureSessionOutput_create(textureWindow, &textureOutput);
+    ACaptureSessionOutputContainer_create(&outputs);
+    ACaptureSessionOutputContainer_add(outputs, textureOutput);
+
+    imageReader = createJpegReader();
+    imageWindow = createSurface(imageReader);
+    ANativeWindow_acquire(imageWindow);
+    ACameraOutputTarget_create(imageWindow, &imageTarget);
+    ACaptureRequest_addTarget(request, imageTarget);
+    ACaptureSessionOutput_create(imageWindow, &imageOutput);
+    ACaptureSessionOutputContainer_add(outputs, imageOutput);
+
+    ANativeWindow_acquire(textureWindow);
+    ACameraOutputTarget_create(textureWindow, &textureTarget);
+    ACaptureRequest_addTarget(request, textureTarget);
+
+    ACameraDevice_createCaptureSession(cameraDevice, outputs, &sessionStateCallbacks,
+                                       &textureSession);
+    ACameraCaptureSession_setRepeatingRequest(textureSession, &captureCallbacks, 1, &request,
+                                              nullptr);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_euphoria_psycho_knife_MainActivity_takePhoto(JNIEnv *env, jclass clazz) {
 
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_euphoria_psycho_knife_MainActivity_takePhoto(JNIEnv *env, jclass clazz) {
-    camera_->TakePhoto();
-}extern "C"
-JNIEXPORT void JNICALL
 Java_euphoria_psycho_knife_MainActivity_stopCamera(JNIEnv *env, jclass clazz) {
-    env_->DeleteGlobalRef(surface_);
-    ANativeWindow_release(nativeWindow_);
-    camera_.reset();
-    jpgReader_.reset();
+
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_euphoria_psycho_knife_MainActivity_startCamera(JNIEnv *env, jclass clazz, jobject surface,
+                                                    jint width, jint height) {
+    InitializeCamera(env, surface);
 }
