@@ -1,20 +1,21 @@
 package euphoria.psycho.knife;
 
-import android.Manifest;
 import android.Manifest.permission;
 import android.app.Activity;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.os.Build.VERSION;
-import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.view.Display;
-import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnClickListener;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.io.File;
@@ -27,17 +28,54 @@ public class MainActivity extends Activity {
         System.loadLibrary("nativelib");
     }
 
-    native void openCamera(boolean isCameraBack, Surface surface);
+    public boolean imagePreview(int[] bitmapArray, int w, int h) {
+//        if (bitmapReady) {
+//            bitmapReady = false;
+//            Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+//            bitmap.setPixels(bitmapArray, 0, w, 0, 0, w, h);
+//            runOnUiThread(new Runnable() {
+//                @Override
+//                public void run() {
+//                    mImageView.setImageBitmap(bitmap);
+//                }
+//            });
+//            bitmapReady = true;
+//        }
+        boolean bitmapReady = true;
+        return bitmapReady;
+    }
 
-    native void cameraPreview();
+    private void initialize() {
+        setContentView(R.layout.main);
+        View rootView = findViewById(R.id.root_view);
+        setSystemUiVisibility(rootView);
+        Window win = getWindow();
+        WindowManager.LayoutParams winParams = win.getAttributes();
+        winParams.buttonBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_OFF;
+        winParams.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
+        win.setAttributes(winParams);
+        win.setBackgroundDrawable(null);
+        getActionBar().hide();
+        File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        if (!dir.isDirectory()) {
+            dir.mkdirs();
+        }
+        openCamera(true, this);
+        cameraPreview();
+        rootView.setOnClickListener(v -> takePhoto());
+    }
 
-    native void takePhoto();
+    private void setSystemUiVisibility(View rootView) {
+        rootView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
+    }
 
-    native void deleteCamera();
-
-    SurfaceView surfaceView;
-    SurfaceHolder surfaceHolder;
-    View mView;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
 
     @Override
     protected void onStart() {
@@ -73,39 +111,12 @@ public class MainActivity extends Activity {
         initialize();
     }
 
-    private void initialize() {
-        setContentView(R.layout.main);
-        surfaceView = (SurfaceView) findViewById(R.id.surfaceview);
-        surfaceHolder = surfaceView.getHolder();
-        surfaceHolder.addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(SurfaceHolder holder) {
-                Display display = getWindowManager().getDefaultDisplay();
-                int height = display.getMode().getPhysicalHeight();
-                int width = display.getMode().getPhysicalWidth();
-                //startCamera(holder.getSurface(), 1920, 1080);
-            }
+    native void openCamera(boolean isCameraBack, MainActivity mainActivity);
 
-            @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
-            }
+    native void cameraPreview();
 
-            @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            }
-        });
-        mView = findViewById(R.id.view);
-        File dir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        if (!dir.isDirectory()) {
-            dir.mkdirs();
-        }
-        mView.setOnClickListener(v -> {
-            takePhoto();
-        });
-    }
+    native void takePhoto();
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-    }
+    native void deleteCamera();
+
 }

@@ -36,7 +36,7 @@ private:
     std::function<void(void *ctx, const char* fileName)> callback_;
     void *callbackCtx_;
     void PresentImage90(AImage* image);
-    void WriteFile(AImage* image, int32_t format);
+    void WriteFile(AImage* image);
     void imagePreview(jint *image, jint width, jint height);
 
 };

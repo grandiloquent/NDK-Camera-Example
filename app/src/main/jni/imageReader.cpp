@@ -13,7 +13,7 @@
 #include "imageReader.h"
 #include "utils.h"
 
-static const char *kDirName = "/sdcard/DCIM/Camera/";
+static const char *kDirName = "/storage/emulated/0/Android/data/euphoria.psycho.knife/files/Pictures/";
 static const char *kFileName = "capture";
 
 void OnImageCallback(void *ctx, AImageReader *reader) {
@@ -24,35 +24,53 @@ imageReader::imageReader(ImageFormat *imageFormat, AIMAGE_FORMATS format) {
     callback_ = nullptr;
     callbackCtx_ = nullptr;
 
-    media_status_t status = AImageReader_newWithUsage(imageFormat->width, imageFormat->height, format, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, 4, &reader_);
+    media_status_t status = AImageReader_newWithUsage(imageFormat->width, imageFormat->height,
+                                                      format, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN,
+                                                      4, &reader_);
 
-    if(status == AMEDIA_OK) {
+    if (status == AMEDIA_OK) {
         AImageReader_ImageListener listener{.context = this, .onImageAvailable = OnImageCallback};
         AImageReader_setImageListener(reader_, &listener);
-    } else{
+    } else {
         LOGW("Error create listener");
     }
 }
 
-void imageReader::registerCallback(void* ctx,
-                                   std::function<void(void* ctx, const char*fileName)> func) {
+void imageReader::registerCallback(void *ctx,
+                                   std::function<void(void *ctx, const char *fileName)> func) {
     callbackCtx_ = ctx;
     callback_ = func;
 }
 
 void imageReader::imageCallback(AImageReader *reader) {
+//    int32_t format;
+//
+//    media_status_t status = AImageReader_getFormat(reader, &format);
+//    if (format == AIMAGE_FORMAT_YUV_420_888 && isCapture) {
+//        AImage *image = nullptr;
+//        status = AImageReader_acquireNextImage(reader, &image);
+//
+//        std::thread writeFileHandler(&imageReader::WriteFile, this, image, format);
+//        writeFileHandler.detach();
+//    }
+
     int32_t format;
-
     media_status_t status = AImageReader_getFormat(reader, &format);
-    if (format == AIMAGE_FORMAT_YUV_420_888 && isCapture) {
+    ASSERT(status == AMEDIA_OK, "Failed to get the media format");
+    if (format == AIMAGE_FORMAT_JPEG) {
+        //if (format == AIMAGE_FORMAT_YUV_420_888){
         AImage *image = nullptr;
-        status = AImageReader_acquireNextImage(reader, &image);
-
+        media_status_t media_status = AImageReader_acquireNextImage(reader, &image);
+        ASSERT(media_status == AMEDIA_OK && image, "Image is not available");
 
         // Create a thread and write out the jpeg files
-        std::thread writeFileHandler(&imageReader::WriteFile, this, image, format);
+        std::thread writeFileHandler(&imageReader::WriteFile, this, image);
         writeFileHandler.detach();
+
+        // not working... this->WriteFile(image);
+        // do not use this->RunCaffe(image);
     }
+
 }
 
 ANativeWindow *imageReader::getNativeWindow(void) {
@@ -60,7 +78,7 @@ ANativeWindow *imageReader::getNativeWindow(void) {
     ANativeWindow *nativeWindow;
     media_status_t status = AImageReader_getWindow(reader_, &nativeWindow);
 
-    if(status == AMEDIA_OK) return nativeWindow;
+    if (status == AMEDIA_OK) return nativeWindow;
     else return nullptr;
 }
 
@@ -91,9 +109,9 @@ static inline uint32_t YUV2RGB(int nY, int nU, int nV) {
     // nG = (int)(1.164 * nY - 0.813 * nV - 0.391 * nU);
     // nB = (int)(1.164 * nY + 2.018 * nU);
 
-    int nR = (int)(1192 * nY + 1634 * nV);
-    int nG = (int)(1192 * nY - 833 * nV - 400 * nU);
-    int nB = (int)(1192 * nY + 2066 * nU);
+    int nR = (int) (1192 * nY + 1634 * nV);
+    int nG = (int) (1192 * nY - 833 * nV - 400 * nU);
+    int nB = (int) (1192 * nY + 2066 * nU);
 
     nR = MIN(kMaxChannelValue, MAX(0, nR));
     nG = MIN(kMaxChannelValue, MAX(0, nG));
@@ -103,7 +121,7 @@ static inline uint32_t YUV2RGB(int nY, int nU, int nV) {
     nG = (nG >> 10) & 0xff;
     nB = (nB >> 10) & 0xff;
 
-    return 255 << 24 | (nB << 16) | (nG << 8) | nR ;
+    return 255 << 24 | (nB << 16) | (nG << 8) | nR;
 }
 
 bool imageReader::displayImage(AImage *image) {
@@ -142,7 +160,7 @@ void imageReader::PresentImage90(AImage *image) {
      * TODO: Paste function for processing with streaming data
      */
 
-    jint *image_out = new jint[height*width];
+    jint *image_out = new jint[height * width];
     for (int32_t y = 0; y < height; y++) {
         const uint8_t *pY = yPixel + yStride * (y + srcRect.top) + srcRect.left;
 
@@ -153,28 +171,72 @@ void imageReader::PresentImage90(AImage *image) {
         for (int32_t x = 0; x < width; x++) {
             const int32_t uv_offset = (x >> 1) * uvPixelStride;
             // [x, y]--> [-y, x]
-            image_out[(x*height)+(height-y-1)] = YUV2RGB(pY[x], pU[uv_offset], pV[uv_offset]);
+            image_out[(x * height) + (height - y - 1)] = YUV2RGB(pY[x], pU[uv_offset],
+                                                                 pV[uv_offset]);
         }
     }
     imagePreview(image_out, height, width);
 }
 
-void imageReader::WriteFile(AImage* image, int32_t format) {
+void imageReader::WriteFile(AImage *image) {
 
-    int32_t yStride, uvStride;
-    uint8_t *yPixel, *uPixel, *vPixel;
-    int32_t yLen, uLen, vLen;
-    AImage_getPlaneRowStride(image, 0, &yStride);
-    AImage_getPlaneRowStride(image, 1, &uvStride);
-    AImage_getPlaneData(image, 0, &yPixel, &yLen);
-    AImage_getPlaneData(image, 1, &vPixel, &vLen);
-    AImage_getPlaneData(image, 2, &uPixel, &uLen);
+//    int32_t yStride, uvStride;
+//    uint8_t *yPixel, *uPixel, *vPixel;
+//    int32_t yLen, uLen, vLen;
+//    AImage_getPlaneRowStride(image, 0, &yStride);
+//    AImage_getPlaneRowStride(image, 1, &uvStride);
+//    AImage_getPlaneData(image, 0, &yPixel, &yLen);
+//    AImage_getPlaneData(image, 1, &vPixel, &vLen);
+//    AImage_getPlaneData(image, 2, &uPixel, &uLen);
+//
+//    AImage_delete(image);
 
-    /**
-     * TODO: This plane for processing width photo, witch take from camera.
-     */
+    int planeCount;
+    media_status_t status = AImage_getNumberOfPlanes(image, &planeCount);
+    ASSERT(status == AMEDIA_OK && planeCount == 1,
+           "Error: getNumberOfPlanes() planeCount = %d", planeCount);
+    uint8_t *data = nullptr;
+    int len = 0;
+    AImage_getPlaneData(image, 0, &data, &len);
 
+    DIR *dir = opendir(kDirName);
+    if (dir) {
+        closedir(dir);
+    } else {
+        std::string cmd = "mkdir -p ";
+        cmd += kDirName;
+        system(cmd.c_str());
+    }
+
+    struct timespec ts{
+            0, 0
+    };
+    clock_gettime(CLOCK_REALTIME, &ts);
+    struct tm localTime;
+    localtime_r(&ts.tv_sec, &localTime);
+
+    std::string fileName = kDirName;
+    std::string dash("-");
+    fileName += kFileName + std::to_string(localTime.tm_mon) +
+                std::to_string(localTime.tm_mday) + dash +
+                std::to_string(localTime.tm_hour) +
+                std::to_string(localTime.tm_min) +
+                std::to_string(localTime.tm_sec) + ".jpg";
+    FILE *file = fopen(fileName.c_str(), "wb");
+    if (file && data && len) {
+        fwrite(data, 1, len, file);
+        fclose(file);
+
+        if (callback_) {
+            callback_(callbackCtx_, fileName.c_str());
+        }
+
+    } else {
+        if (file)
+            fclose(file);
+    }
     AImage_delete(image);
+
 }
 
 imageReader::~imageReader() {

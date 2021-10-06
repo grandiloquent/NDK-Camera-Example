@@ -22,3 +22,9 @@ https://developer.android.com/ndk/reference/group/camera#acameracapturesession_s
 - https://github.com/sixo/native-camera/blob/master/app/src/main/cpp/native-lib.cpp
 - https://github.com/Viktorovich21/CameraNative
 - https://android.googlesource.com/platform/packages/apps/Gallery2/
+
+## Logcat
+
+```
+^(?!.*(wificond|SELinux|PackageUtil|QSAnimator)).*$
+```

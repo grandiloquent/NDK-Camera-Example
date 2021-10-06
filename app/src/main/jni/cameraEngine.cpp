@@ -9,13 +9,12 @@
 
 // constructor class of camera engine
 //@param: dimension in class DisplayDimension
-cameraEngine::cameraEngine(DisplayDimension *Dim, bool isCameraBack):
-    captureReader(nullptr),
-    previewReader(nullptr)
-{
+cameraEngine::cameraEngine(DisplayDimension *Dim, bool isCameraBack) :
+        captureReader(nullptr),
+        previewReader(nullptr) {
     size_operation = Dim;
     LOGI("Camera created successful");
-    if(isCameraBack) facing = 1;
+    if (isCameraBack) facing = 1;
     else facing = 0;
     cameraMgr = new cameraManager(facing);
     createCamera();
@@ -25,15 +24,18 @@ cameraEngine::cameraEngine(DisplayDimension *Dim, bool isCameraBack):
 void cameraEngine::createCamera() {
     cameraMgr->openCamera();
 
-    ImageFormat view{0,0,0}, capture{0,0,0}; // Create image resolution
-    cameraMgr->maxCaptureSize(&view, &capture, size_operation); // take maximum image resolution for this camera and resolution for preview
+    ImageFormat view{0, 0, 0}, capture{0, 0, 0}; // Create image resolution
+    cameraMgr->maxCaptureSize(&view, &capture,
+                              size_operation); // take maximum image resolution for this camera and resolution for preview
 
     //Create readers
     previewReader = new imageReader(&view, AIMAGE_FORMAT_YUV_420_888);
-    captureReader = new imageReader(&capture, AIMAGE_FORMAT_YUV_420_888);
+    captureReader = new imageReader(&capture, AIMAGE_FORMAT_JPEG);
+    //captureReader = new imageReader(&capture, AIMAGE_FORMAT_YUV_420_888);
     captureReader->isCapture = true;
 
-    cameraMgr->CreateSession(previewReader->getNativeWindow(), captureReader->getNativeWindow(), 90);
+    cameraMgr->CreateSession(previewReader->getNativeWindow(), captureReader->getNativeWindow(),
+                             90);
 }
 
 //Function for delete cameraEngine
@@ -57,23 +59,23 @@ void cameraEngine::deleteCamera(void) {
 // In the moment load next image in buffer
 void cameraEngine::drawFrame() {
     //if(!CameraReady || !previewReader) return nullptr;
-    AImage* image = previewReader->getNextImage();
-    
-    if(!image) return;
+    AImage *image = previewReader->getNextImage();
+
+    if (!image) return;
     previewReader->displayImage(image);
 }
 
 // Start Preview.
 // For run Thread
 void cameraEngine::startPreview(bool start) {
-    if(start == true){
+    if (start == true) {
         cameraMgr->startPreview(true);
     }
 }
 
 // Take Image
 void cameraEngine::onTakeImage() {
-    if(cameraMgr){
+    if (cameraMgr) {
         cameraMgr->TakePhoto();
     }
 }
