@@ -27,11 +27,13 @@ public class MainActivity extends Activity {
         System.loadLibrary("nativelib");
     }
 
-    native static void startCamera(Surface surface, int width, int height);
+    native void openCamera(boolean isCameraBack, Surface surface);
 
-    native static void takePhoto();
+    native void cameraPreview();
 
-    native static void stopCamera();
+    native void takePhoto();
+
+    native void deleteCamera();
 
     SurfaceView surfaceView;
     SurfaceHolder surfaceHolder;
@@ -81,7 +83,7 @@ public class MainActivity extends Activity {
                 Display display = getWindowManager().getDefaultDisplay();
                 int height = display.getMode().getPhysicalHeight();
                 int width = display.getMode().getPhysicalWidth();
-                startCamera(holder.getSurface(), 1920, 1080);
+                //startCamera(holder.getSurface(), 1920, 1080);
             }
 
             @Override
@@ -104,7 +106,6 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        stopCamera();
         super.onDestroy();
     }
 }
